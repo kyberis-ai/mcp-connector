@@ -115,7 +115,7 @@ export async function exchangeConnectToken(args, fetchImpl = globalThis.fetch) {
     agentId: args.agentId,
     agentLabel: args.agentLabel,
   });
-  const endpoint = `${String(args.apiUrl).replace(/\/+$/, "")}/api/v2/mcp/connect-tokens/exchange`;
+  const endpoint = `${String(args.apiUrl).replace(/\/+$/, "")}/v2/mcp/connect-tokens/exchange`;
   const response = await fetchImpl(endpoint, {
     method: "POST",
     headers: {

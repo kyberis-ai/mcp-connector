@@ -60,7 +60,7 @@ test("exchangeConnectToken posts normalized payload", async () => {
     agentLabel: "Test Claude",
   }, fetchImpl);
 
-  assert.equal(calls[0].url, "https://api.example.com/api/v2/mcp/connect-tokens/exchange");
+  assert.equal(calls[0].url, "https://api.example.com/v2/mcp/connect-tokens/exchange");
   assert.deepEqual(JSON.parse(calls[0].init.body), {
     connect_token: TOKEN,
     agent_type: "claude",
