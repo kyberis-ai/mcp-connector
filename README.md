@@ -3,10 +3,18 @@
 CLI helper for connecting agent MCP clients to Kyberis with a one-time connect token.
 
 ```bash
-npx -y @kyberis-ai/mcp connect claude --token kct_abc123
+npx -y @kyberis-ai/mcp connect windsurf --token kct_abc123
 ```
 
-The command exchanges the token for a short-lived MCP bearer credential, prints the MCP URL, and emits client-specific configuration guidance for Claude, Codex, Cursor, or generic MCP clients.
+The command exchanges the token for a short-lived MCP bearer credential and configures the selected MCP client by default. Use `--dry-run` or `-n` to print the configuration guidance without changing local client config. Use `--json` to print machine-readable connection details without changing local client config.
+
+Default configuration targets:
+
+- Claude: runs `claude mcp add --transport http kyberis ...`
+- Codex: updates `~/.codex/config.toml`
+- Cursor: updates `~/.cursor/mcp.json`
+- Windsurf: updates `~/.codeium/windsurf/mcp_config.json`
+- Generic: no default install target; use `--dry-run` and copy the JSON into your client
 
 ## Contributing
 
