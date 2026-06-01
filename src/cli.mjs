@@ -1,21 +1,25 @@
+import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import os from "node:os";
+import path from "node:path";
 
 const DEFAULT_API_URL = "https://api.kyberis.ai";
 const CONNECT_TOKEN_RE = /^kct_[A-Za-z0-9_-]{32,}$/;
 const AGENT_ID_RE = /^kag_[A-Za-z0-9_-]{16,}$/;
 const CLIENT_RE = /^[A-Za-z0-9._-]{1,64}$/;
-const SUPPORTED_CLIENTS = new Set(["claude", "codex", "cursor", "generic"]);
+const SUPPORTED_CLIENTS = new Set(["claude", "codex", "cursor", "windsurf", "generic"]);
 
 function usage() {
   return `Usage:
-  kyberis-mcp connect <claude|codex|cursor|generic> --token <kct_...> [options]
+  kyberis-mcp connect <claude|codex|cursor|windsurf|generic> --token <kct_...> [options]
 
 Options:
   --api-url <url>       Kyberis API base URL. Defaults to ${DEFAULT_API_URL}
   --agent-label <text>  Display label for this agent connection
   --agent-id <id>       Existing agent id, mainly for tests or repair flows
-  --json                Print machine-readable JSON only
+  -n, --dry-run        Print configuration guidance without changing client config
+  --json                Print machine-readable JSON only without changing client config
   -h, --help            Show this help
 `;
 }
@@ -38,6 +42,7 @@ export function parseArgs(argv) {
     agentLabel: "",
     agentId: "",
     json: false,
+    dryRun: false,
   };
   while (args.length) {
     const key = args.shift();
@@ -49,6 +54,8 @@ export function parseArgs(argv) {
       out.agentLabel = String(args.shift() || "").trim();
     } else if (key === "--agent-id") {
       out.agentId = String(args.shift() || "").trim();
+    } else if (key === "--dry-run" || key === "-n") {
+      out.dryRun = true;
     } else if (key === "--json") {
       out.json = true;
     } else {
@@ -68,7 +75,7 @@ function normalizeClient(value) {
     throw new Error("Invalid MCP client name.");
   }
   if (!SUPPORTED_CLIENTS.has(client)) {
-    throw new Error(`Unsupported MCP client '${client}'. Use claude, codex, cursor, or generic.`);
+    throw new Error(`Unsupported MCP client '${client}'. Use claude, codex, cursor, windsurf, or generic.`);
   }
   return client;
 }
@@ -153,7 +160,7 @@ export function errorMessageForExchangeFailure(status, body) {
   const messages = {
     invalid_connect_token: "The connect token is malformed. Generate a new setup command from Kyberis.",
     invalid_agent_id: "The generated agent id was rejected. Retry the command or pass a valid --agent-id.",
-    invalid_agent_type: "The MCP client type is invalid. Use claude, codex, cursor, or generic.",
+    invalid_agent_type: "The MCP client type is invalid. Use claude, codex, cursor, windsurf, or generic.",
     connect_token_not_found: "The connect token was not found. Generate a new setup command from Kyberis.",
     connect_token_used: "This connect token was already used. Generate a new setup command from Kyberis.",
     connect_token_revoked: "This connect token was revoked. Generate a new setup command from Kyberis.",
@@ -190,6 +197,7 @@ export function buildClientConfiguration(exchangeResponse) {
     bearer_token: bearer,
     generic: jsonConfig,
     cursor: jsonConfig,
+    windsurf: jsonConfig,
     claude: {
       command: `claude mcp add --transport http kyberis ${shellQuote(mcpUrl)} --header ${shellQuote(`Authorization: Bearer ${bearer}`)}`,
       config: jsonConfig,
@@ -210,15 +218,109 @@ function tomlString(value) {
 
 export function formatSuccess(client, config) {
   if (client === "claude") {
-    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\nAPI Key: ${config.api_key_id}\n\nRun this Claude command if the CLI did not install it automatically:\n${config.claude.command}\n`;
+    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\nAPI Key: ${config.api_key_id}\n\nRun this Claude command:\n${config.claude.command}\n`;
   }
   if (client === "codex") {
     return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\nAPI Key: ${config.api_key_id}\n\nAdd this to your Codex MCP config:\n${config.codex.toml}`;
   }
   if (client === "cursor") {
-    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\nAPI Key: ${config.api_key_id}\n\nCursor MCP JSON:\n${JSON.stringify(config.cursor, null, 2)}\n`;
+    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\nAPI Key: ${config.api_key_id}\n\nAdd this to your Cursor MCP config at ~/.cursor/mcp.json:\n${JSON.stringify(config.cursor, null, 2)}\n`;
+  }
+  if (client === "windsurf") {
+    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\nAPI Key: ${config.api_key_id}\n\nAdd this to your Windsurf Cascade MCP config at ~/.codeium/windsurf/mcp_config.json:\n${JSON.stringify(config.windsurf, null, 2)}\n`;
   }
   return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\nAPI Key: ${config.api_key_id}\n\nGeneric MCP JSON:\n${JSON.stringify(config.generic, null, 2)}\n`;
+}
+
+export function defaultConfigPath(client, options = {}) {
+  const homeDir = options.homeDir || os.homedir();
+  if (client === "codex") {
+    return path.join(homeDir, ".codex", "config.toml");
+  }
+  if (client === "cursor") {
+    return path.join(homeDir, ".cursor", "mcp.json");
+  }
+  if (client === "windsurf") {
+    return path.join(homeDir, ".codeium", "windsurf", "mcp_config.json");
+  }
+  throw new Error(`No default config path for ${client}. Re-run with --dry-run and copy the generated config into your client.`);
+}
+
+export function installClientConfiguration(client, config, options = {}) {
+  if (client === "claude") {
+    return installClaudeConfiguration(config, options);
+  }
+  if (client === "codex") {
+    const filePath = options.configPath || defaultConfigPath(client, options);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const existing = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8") : "";
+    fs.writeFileSync(filePath, upsertCodexMcpBlock(existing, config.codex.toml));
+    return { type: "file", path: filePath };
+  }
+  if (client === "cursor" || client === "windsurf") {
+    const filePath = options.configPath || defaultConfigPath(client, options);
+    installJsonMcpConfig(filePath, config[client]);
+    return { type: "file", path: filePath };
+  }
+  throw new Error("Generic MCP clients do not have a default config location. Re-run with --dry-run and copy the generated JSON into your client.");
+}
+
+export function installJsonMcpConfig(filePath, config) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  let existing = {};
+  if (fs.existsSync(filePath)) {
+    const text = fs.readFileSync(filePath, "utf8").trim();
+    if (text) {
+      existing = JSON.parse(text);
+    }
+  }
+  if (!existing || typeof existing !== "object" || Array.isArray(existing)) {
+    throw new Error(`Existing MCP config at ${filePath} must be a JSON object.`);
+  }
+  const existingServers = existing.mcpServers && typeof existing.mcpServers === "object" && !Array.isArray(existing.mcpServers)
+    ? existing.mcpServers
+    : {};
+  const next = {
+    ...existing,
+    mcpServers: {
+      ...existingServers,
+      kyberis: config.mcpServers.kyberis,
+    },
+  };
+  fs.writeFileSync(filePath, `${JSON.stringify(next, null, 2)}\n`);
+}
+
+export function upsertCodexMcpBlock(existing, block) {
+  const normalizedBlock = block.trimEnd();
+  const blockRe = /(^|\n)\[mcp_servers\.kyberis\]\n[\s\S]*?(?=\n\[[^\]\n]+\]|\s*$)/m;
+  if (blockRe.test(existing)) {
+    return existing.replace(blockRe, (_match, prefix) => `${prefix}${normalizedBlock}`);
+  }
+  const trimmed = existing.trimEnd();
+  return `${trimmed}${trimmed ? "\n\n" : ""}${normalizedBlock}\n`;
+}
+
+export function installClaudeConfiguration(config, options = {}) {
+  const command = options.claudeCommand || "claude";
+  const args = ["mcp", "add", "--transport", "http", "kyberis", config.mcp_url, "--header", `Authorization: Bearer ${config.bearer_token}`];
+  const run = options.spawnSync || spawnSync;
+  const result = run(command, args, { encoding: "utf8" });
+  if (result.error) {
+    throw new Error(`Failed to run ${command}: ${result.error.message}. Re-run with --dry-run and run the printed command manually.`);
+  }
+  if (result.status !== 0) {
+    const detail = String(result.stderr || result.stdout || "").trim();
+    throw new Error(`Claude MCP configuration failed${detail ? `: ${detail}` : ""}. Re-run with --dry-run and run the printed command manually.`);
+  }
+  return { type: "command", command: config.claude.command };
+}
+
+export function formatInstallSuccess(client, config, installResult) {
+  const base = `Kyberis MCP connection installed.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\nAPI Key: ${config.api_key_id}`;
+  if (installResult.type === "file") {
+    return `${base}\n\nUpdated ${installResult.path}\nRestart or refresh your MCP client if it does not pick up the new server immediately.\n`;
+  }
+  return `${base}\n\nConfigured ${client} with:\n${installResult.command}\n`;
 }
 
 export async function main(argv) {
@@ -233,5 +335,10 @@ export async function main(argv) {
     console.log(JSON.stringify({ client: args.client, ...config }, null, 2));
     return;
   }
-  console.log(formatSuccess(args.client, config));
+  if (args.dryRun) {
+    console.log(formatSuccess(args.client, config));
+    return;
+  }
+  const installResult = installClientConfiguration(args.client, config);
+  console.log(formatInstallSuccess(args.client, config, installResult));
 }
