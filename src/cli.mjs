@@ -199,7 +199,7 @@ export function buildClientConfiguration(exchangeResponse) {
     cursor: jsonConfig,
     windsurf: jsonConfig,
     claude: {
-      command: `claude mcp add --transport http kyberis ${shellQuote(mcpUrl)} --header ${shellQuote(`Authorization: Bearer ${bearer}`)}`,
+      command: `claude mcp add --scope local --transport http kyberis ${shellQuote(mcpUrl)} --header ${shellQuote(`Authorization: Bearer ${bearer}`)}`,
       config: jsonConfig,
     },
     codex: {
@@ -292,7 +292,7 @@ export function installJsonMcpConfig(filePath, config) {
 
 export function upsertCodexMcpBlock(existing, block) {
   const normalizedBlock = block.trimEnd();
-  const blockRe = /(^|\n)\[mcp_servers\.kyberis\]\n[\s\S]*?(?=\n\[[^\]\n]+\]|\s*$)/m;
+  const blockRe = /(^|\r?\n)[ \t]*\[mcp_servers\.kyberis\][ \t]*(?:#[^\r\n]*)?\r?\n[\s\S]*?(?=\r?\n[ \t]*\[[^\]\r\n]+\]|[ \t\r\n]*$)/;
   if (blockRe.test(existing)) {
     return existing.replace(blockRe, (_match, prefix) => `${prefix}${normalizedBlock}`);
   }
@@ -302,9 +302,14 @@ export function upsertCodexMcpBlock(existing, block) {
 
 export function installClaudeConfiguration(config, options = {}) {
   const command = options.claudeCommand || "claude";
-  const args = ["mcp", "add", "--transport", "http", "kyberis", config.mcp_url, "--header", `Authorization: Bearer ${config.bearer_token}`];
   const run = options.spawnSync || spawnSync;
-  const result = run(command, args, { encoding: "utf8" });
+  const runOptions = { encoding: "utf8" };
+  const removeResult = run(command, ["mcp", "remove", "--scope", "local", "kyberis"], runOptions);
+  if (removeResult.error) {
+    throw new Error(`Failed to run ${command}: ${removeResult.error.message}. Re-run with --dry-run and run the printed command manually.`);
+  }
+  const args = ["mcp", "add", "--scope", "local", "--transport", "http", "kyberis", config.mcp_url, "--header", `Authorization: Bearer ${config.bearer_token}`];
+  const result = run(command, args, runOptions);
   if (result.error) {
     throw new Error(`Failed to run ${command}: ${result.error.message}. Re-run with --dry-run and run the printed command manually.`);
   }
