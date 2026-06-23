@@ -12,6 +12,7 @@ import {
   formatInstallSuccess,
   formatSuccess,
   installClientConfiguration,
+  installJsonMcpConfig,
   parseArgs,
   upsertCodexMcpBlock,
 } from "../src/cli.mjs";
@@ -162,6 +163,31 @@ test("installClientConfiguration merges Windsurf MCP config", () => {
   assert.equal(saved.mcpServers.kyberis.headers.Authorization, "Bearer bearer-token");
 });
 
+test("installJsonMcpConfig replaces existing Kyberis config", () => {
+  const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), "kyberis-mcp-test-"));
+  const configPath = path.join(homeDir, "mcp.json");
+  fs.writeFileSync(configPath, JSON.stringify({
+    mcpServers: {
+      existing: { command: "node" },
+      kyberis: {
+        type: "http",
+        url: "https://old.example.com/mcp",
+        headers: { Authorization: "Bearer old-token" },
+      },
+    },
+    other: true,
+  }, null, 2));
+
+  installJsonMcpConfig(configPath, testConfig().cursor);
+  const saved = JSON.parse(fs.readFileSync(configPath, "utf8"));
+
+  assert.equal(saved.other, true);
+  assert.deepEqual(saved.mcpServers.existing, { command: "node" });
+  assert.equal(Object.keys(saved.mcpServers).filter((name) => name === "kyberis").length, 1);
+  assert.equal(saved.mcpServers.kyberis.url, "https://mcp.example.com/mcp");
+  assert.equal(saved.mcpServers.kyberis.headers.Authorization, "Bearer bearer-token");
+});
+
 test("upsertCodexMcpBlock replaces existing Kyberis block", () => {
   const existing = "[project]\nname = \"demo\"\n\n[mcp_servers.kyberis]\nurl = \"old\"\n\n[mcp_servers.other]\nurl = \"other\"\n";
   const updated = upsertCodexMcpBlock(existing, testConfig().codex.toml);
@@ -172,18 +198,29 @@ test("upsertCodexMcpBlock replaces existing Kyberis block", () => {
   assert.match(updated, /\[mcp_servers.other\]/);
 });
 
-test("installClientConfiguration invokes Claude CLI", () => {
+test("upsertCodexMcpBlock replaces spaced CRLF Kyberis block", () => {
+  const existing = "[project]\r\nname = \"demo\"\r\n\r\n  [mcp_servers.kyberis]  \r\nurl = \"https://mcp.example.com/mcp\"\r\nheaders = { Authorization = \"Bearer bearer-token\" }\r\n\r\n[mcp_servers.other]\r\nurl = \"other\"\r\n";
+  const updated = upsertCodexMcpBlock(existing, testConfig().codex.toml);
+
+  assert.equal((updated.match(/\[mcp_servers\.kyberis\]/g) || []).length, 1);
+  assert.equal((updated.match(/headers =/g) || []).length, 1);
+  assert.match(updated, /url = "https:\/\/mcp.example.com\/mcp"/);
+  assert.match(updated, /\[mcp_servers.other\]/);
+});
+
+test("installClientConfiguration invokes Claude CLI idempotently", () => {
   const calls = [];
   const result = installClientConfiguration("claude", testConfig(), {
     spawnSync: (command, args, options) => {
       calls.push({ command, args, options });
-      return { status: 0, stdout: "", stderr: "" };
+      return { status: calls.length === 1 ? 1 : 0, stdout: "", stderr: "No project-local MCP server found with name: kyberis" };
     },
   });
 
   assert.equal(calls[0].command, "claude");
-  assert.deepEqual(calls[0].args.slice(0, 5), ["mcp", "add", "--transport", "http", "kyberis"]);
-  assert.ok(calls[0].args.includes("Authorization: Bearer bearer-token"));
+  assert.deepEqual(calls[0].args, ["mcp", "remove", "--scope", "local", "kyberis"]);
+  assert.deepEqual(calls[1].args.slice(0, 7), ["mcp", "add", "--scope", "local", "--transport", "http", "kyberis"]);
+  assert.ok(calls[1].args.includes("Authorization: Bearer bearer-token"));
   assert.equal(result.type, "command");
 });
 
