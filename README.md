@@ -10,11 +10,17 @@ The command exchanges the token for a short-lived MCP bearer credential and conf
 
 Default configuration targets:
 
-- Claude: runs `claude mcp add --transport http kyberis ...`
+- Claude: runs `claude mcp add --scope local --transport http kyberis ...`
 - Codex: updates `~/.codex/config.toml`
 - Cursor: updates `~/.cursor/mcp.json`
 - Windsurf: updates `~/.codeium/windsurf/mcp_config.json`
 - Generic: no default install target; use `--dry-run` and copy the JSON into your client
+
+Claude Code scopes:
+
+- `local`: current project directory only. This is the connector default.
+- `user`: all Claude Code projects for the current OS user.
+- `project`: shared project configuration. Use only when you intentionally want to share the MCP server entry, and do not commit bearer tokens or secrets.
 
 ## Contributing
 
