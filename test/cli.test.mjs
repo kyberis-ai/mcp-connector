@@ -224,6 +224,23 @@ test("installClientConfiguration invokes Claude CLI idempotently", () => {
   assert.equal(result.type, "command");
 });
 
+test("installClientConfiguration explains when Claude Code CLI is missing", () => {
+  const missingCliError = Object.assign(new Error("spawnSync claude ENOENT"), { code: "ENOENT" });
+
+  assert.throws(
+    () => installClientConfiguration("claude", testConfig(), {
+      spawnSync: () => ({ error: missingCliError }),
+    }),
+    (error) => {
+      assert.match(error.message, /Claude Code CLI was not found on PATH/);
+      assert.match(error.message, /curl -fsSL https:\/\/claude\.ai\/install\.sh \| bash/);
+      assert.match(error.message, /claude --version/);
+      assert.match(error.message, /https:\/\/code\.claude\.com\/docs\/en\/quickstart/);
+      return true;
+    },
+  );
+});
+
 test("formatInstallSuccess reports updated config file", () => {
   const output = formatInstallSuccess("windsurf", testConfig(), { type: "file", path: "/tmp/mcp_config.json" });
   assert.match(output, /connection installed/);

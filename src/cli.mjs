@@ -9,6 +9,27 @@ const CONNECT_TOKEN_RE = /^kct_[A-Za-z0-9_-]{32,}$/;
 const AGENT_ID_RE = /^kag_[A-Za-z0-9_-]{16,}$/;
 const CLIENT_RE = /^[A-Za-z0-9._-]{1,64}$/;
 const SUPPORTED_CLIENTS = new Set(["claude", "codex", "cursor", "windsurf", "generic"]);
+const CLAUDE_CODE_INSTALL_URL = "https://code.claude.com/docs/en/quickstart";
+
+function isCommandNotFound(error) {
+  return Boolean(error && error.code === "ENOENT");
+}
+
+function missingAgentCommandMessage(command) {
+  if (command === "claude") {
+    return [
+      "Claude Code CLI was not found on PATH.",
+      "Install Claude Code and make sure the `claude` command is available before running Kyberis MCP setup.",
+      "",
+      "macOS/Linux/WSL: curl -fsSL https://claude.ai/install.sh | bash",
+      "Windows PowerShell: irm https://claude.ai/install.ps1 | iex",
+      `Docs: ${CLAUDE_CODE_INSTALL_URL}`,
+      "",
+      "After installing, open a new terminal and run `claude --version`, then retry this command.",
+    ].join("\n");
+  }
+  return `The '${command}' command was not found on PATH. Install the selected agent CLI and make sure '${command} --version' works before running Kyberis MCP setup.`;
+}
 
 function usage() {
   return `Usage:
@@ -306,11 +327,17 @@ export function installClaudeConfiguration(config, options = {}) {
   const runOptions = { encoding: "utf8" };
   const removeResult = run(command, ["mcp", "remove", "--scope", "local", "kyberis"], runOptions);
   if (removeResult.error) {
+    if (isCommandNotFound(removeResult.error)) {
+      throw new Error(missingAgentCommandMessage(command));
+    }
     throw new Error(`Failed to run ${command}: ${removeResult.error.message}. Re-run with --dry-run and run the printed command manually.`);
   }
   const args = ["mcp", "add", "--scope", "local", "--transport", "http", "kyberis", config.mcp_url, "--header", `Authorization: Bearer ${config.bearer_token}`];
   const result = run(command, args, runOptions);
   if (result.error) {
+    if (isCommandNotFound(result.error)) {
+      throw new Error(missingAgentCommandMessage(command));
+    }
     throw new Error(`Failed to run ${command}: ${result.error.message}. Re-run with --dry-run and run the printed command manually.`);
   }
   if (result.status !== 0) {
