@@ -8,6 +8,8 @@ npx -y @kyberis-ai/mcp connect windsurf --token kct_abc123
 
 The command exchanges the token for a short-lived MCP bearer credential and configures the selected MCP client by default. Use `--dry-run` or `-n` to print the configuration guidance without changing local client config. Use `--json` to print machine-readable connection details without changing local client config.
 
+The connect token is only a one-time setup credential. After exchange, Kyberis creates an MCP connection and binds it to a durable API key. That API key's scopes control which MCP tools can call Kyberis. If a tool returns `insufficient_scope`, check `missing_scopes` in the error response, update or create an API key with those scopes, then rebind or reconnect the MCP client so it receives a fresh bearer token.
+
 Default configuration targets:
 
 - Claude: runs `claude mcp add --scope local --transport http kyberis ...`
