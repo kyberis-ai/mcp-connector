@@ -14,6 +14,7 @@ import {
   installClientConfiguration,
   installJsonMcpConfig,
   parseArgs,
+  redactCredentialText,
   upsertCodexMcpBlock,
 } from "../src/cli.mjs";
 
@@ -241,8 +242,38 @@ test("installClientConfiguration explains when Claude Code CLI is missing", () =
   );
 });
 
+test("installClientConfiguration redacts bearer tokens from Claude CLI failures", () => {
+  assert.throws(
+    () => installClientConfiguration("claude", testConfig(), {
+      spawnSync: () => ({
+        status: 1,
+        stderr: "failed command included --header 'Authorization: Bearer bearer-token'",
+      }),
+    }),
+    (error) => {
+      assert.match(error.message, /Authorization: Bearer \[redacted\]/);
+      assert.doesNotMatch(error.message, /bearer-token/);
+      return true;
+    },
+  );
+});
+
 test("formatInstallSuccess reports updated config file", () => {
   const output = formatInstallSuccess("windsurf", testConfig(), { type: "file", path: "/tmp/mcp_config.json" });
   assert.match(output, /connection installed/);
   assert.match(output, /Updated \/tmp\/mcp_config\.json/);
+});
+
+test("formatInstallSuccess redacts bearer tokens from command output", () => {
+  const output = formatInstallSuccess("claude", testConfig(), { type: "command", command: testConfig().claude.command });
+
+  assert.match(output, /Configured claude with:/);
+  assert.match(output, /Authorization: Bearer \[redacted\]/);
+  assert.doesNotMatch(output, /bearer-token/);
+});
+
+test("redactCredentialText redacts bearer tokens in arbitrary output", () => {
+  const output = redactCredentialText("Authorization: Bearer bearer-token\nBearer another-token");
+
+  assert.equal(output, "Authorization: Bearer [redacted]\nBearer [redacted]");
 });

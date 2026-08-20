@@ -10,6 +10,7 @@ const AGENT_ID_RE = /^kag_[A-Za-z0-9_-]{16,}$/;
 const CLIENT_RE = /^[A-Za-z0-9._-]{1,64}$/;
 const SUPPORTED_CLIENTS = new Set(["claude", "codex", "cursor", "windsurf", "generic"]);
 const CLAUDE_CODE_INSTALL_URL = "https://code.claude.com/docs/en/quickstart";
+const REDACTED_BEARER = "[redacted]";
 
 function isCommandNotFound(error) {
   return Boolean(error && error.code === "ENOENT");
@@ -29,6 +30,12 @@ function missingAgentCommandMessage(command) {
     ].join("\n");
   }
   return `The '${command}' command was not found on PATH. Install the selected agent CLI and make sure '${command} --version' works before running Kyberis MCP setup.`;
+}
+
+export function redactCredentialText(text) {
+  return String(text)
+    .replace(/(Authorization:\s*Bearer\s+)([^'"\s]+)/gi, `$1${REDACTED_BEARER}`)
+    .replace(/(Bearer\s+)([A-Za-z0-9._~+/-]+=*)/g, `$1${REDACTED_BEARER}`);
 }
 
 function usage() {
@@ -341,7 +348,7 @@ export function installClaudeConfiguration(config, options = {}) {
     throw new Error(`Failed to run ${command}: ${result.error.message}. Re-run with --dry-run and run the printed command manually.`);
   }
   if (result.status !== 0) {
-    const detail = String(result.stderr || result.stdout || "").trim();
+    const detail = redactCredentialText(String(result.stderr || result.stdout || "").trim());
     throw new Error(`Claude MCP configuration failed${detail ? `: ${detail}` : ""}. Re-run with --dry-run and run the printed command manually.`);
   }
   return { type: "command", command: config.claude.command };
@@ -352,7 +359,7 @@ export function formatInstallSuccess(client, config, installResult) {
   if (installResult.type === "file") {
     return `${base}\n\nUpdated ${installResult.path}\nRestart or refresh your MCP client if it does not pick up the new server immediately.\n`;
   }
-  return `${base}\n\nConfigured ${client} with:\n${installResult.command}\n`;
+  return `${base}\n\nConfigured ${client} with:\n${redactCredentialText(installResult.command)}\n`;
 }
 
 export async function main(argv) {
