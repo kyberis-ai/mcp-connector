@@ -1,6 +1,6 @@
 {
   "name": "@kyberis-ai/mcp",
-  "version": "0.1.6",
+  "version": "0.2.0",
   "description": "Kyberis MCP connector CLI for agent setup",
   "type": "module",
   "bin": {
