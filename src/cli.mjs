@@ -234,7 +234,7 @@ export function buildClientConfiguration(exchangeResponse) {
       config: jsonConfig,
     },
     codex: {
-      toml: `[mcp_servers.kyberis]\nurl = ${tomlString(mcpUrl)}\nheaders = { Authorization = ${tomlString(authHeader)} }\n`,
+      toml: `[mcp_servers.kyberis]\nurl = ${tomlString(mcpUrl)}\nhttp_headers = { Authorization = ${tomlString(authHeader)} }\n`,
     },
   };
 }

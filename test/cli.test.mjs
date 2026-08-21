@@ -134,7 +134,7 @@ test("buildClientConfiguration emits client snippets", () => {
   assert.match(config.claude.command, /claude mcp add/);
   assert.match(config.claude.command, /Authorization: ApiKey api-key-1:api-secret-1/);
   assert.match(config.codex.toml, /mcp_servers\.kyberis/);
-  assert.match(config.codex.toml, /Authorization = "ApiKey api-key-1:api-secret-1"/);
+  assert.match(config.codex.toml, /http_headers = \{ Authorization = "ApiKey api-key-1:api-secret-1" \}/);
 });
 
 test("buildClientConfiguration falls back to bearer for older exchange responses", () => {
@@ -154,7 +154,7 @@ test("buildClientConfiguration falls back to bearer for older exchange responses
   assert.equal(config.cursor.mcpServers.kyberis.headers.Authorization, "Bearer bearer-token");
   assert.equal(config.windsurf.mcpServers.kyberis.headers.Authorization, "Bearer bearer-token");
   assert.match(config.claude.command, /Authorization: Bearer bearer-token/);
-  assert.match(config.codex.toml, /Authorization = "Bearer bearer-token"/);
+  assert.match(config.codex.toml, /http_headers = \{ Authorization = "Bearer bearer-token" \}/);
 });
 
 test("formatSuccess emits Windsurf MCP config guidance", () => {
@@ -228,11 +228,11 @@ test("upsertCodexMcpBlock replaces existing Kyberis block", () => {
 });
 
 test("upsertCodexMcpBlock replaces spaced CRLF Kyberis block", () => {
-  const existing = "[project]\r\nname = \"demo\"\r\n\r\n  [mcp_servers.kyberis]  \r\nurl = \"https://mcp.example.com/mcp\"\r\nheaders = { Authorization = \"ApiKey old-key:old-secret\" }\r\n\r\n[mcp_servers.other]\r\nurl = \"other\"\r\n";
+  const existing = "[project]\r\nname = \"demo\"\r\n\r\n  [mcp_servers.kyberis]  \r\nurl = \"https://mcp.example.com/mcp\"\r\nhttp_headers = { Authorization = \"ApiKey old-key:old-secret\" }\r\n\r\n[mcp_servers.other]\r\nurl = \"other\"\r\n";
   const updated = upsertCodexMcpBlock(existing, testConfig().codex.toml);
 
   assert.equal((updated.match(/\[mcp_servers\.kyberis\]/g) || []).length, 1);
-  assert.equal((updated.match(/headers =/g) || []).length, 1);
+  assert.equal((updated.match(/http_headers =/g) || []).length, 1);
   assert.match(updated, /url = "https:\/\/mcp.example.com\/mcp"/);
   assert.match(updated, /\[mcp_servers.other\]/);
 });
