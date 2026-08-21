@@ -10,7 +10,7 @@ const AGENT_ID_RE = /^kag_[A-Za-z0-9_-]{16,}$/;
 const CLIENT_RE = /^[A-Za-z0-9._-]{1,64}$/;
 const SUPPORTED_CLIENTS = new Set(["claude", "codex", "cursor", "windsurf", "generic"]);
 const CLAUDE_CODE_INSTALL_URL = "https://code.claude.com/docs/en/quickstart";
-const REDACTED_BEARER = "[redacted]";
+const REDACTED_CREDENTIAL = "[redacted]";
 
 function isCommandNotFound(error) {
   return Boolean(error && error.code === "ENOENT");
@@ -34,8 +34,10 @@ function missingAgentCommandMessage(command) {
 
 export function redactCredentialText(text) {
   return String(text)
-    .replace(/(Authorization:\s*Bearer\s+)([^'"\s]+)/gi, `$1${REDACTED_BEARER}`)
-    .replace(/(Bearer\s+)([A-Za-z0-9._~+/-]+=*)/g, `$1${REDACTED_BEARER}`);
+    .replace(/(Authorization:\s*ApiKey\s+)([^'"\s]+)/gi, `$1${REDACTED_CREDENTIAL}`)
+    .replace(/(Authorization:\s*Bearer\s+)([^'"\s]+)/gi, `$1${REDACTED_CREDENTIAL}`)
+    .replace(/(ApiKey\s+)([A-Za-z0-9._~+/-]+:[A-Za-z0-9._~+/-]+=*)/g, `$1${REDACTED_CREDENTIAL}`)
+    .replace(/(Bearer\s+)([A-Za-z0-9._~+/-]+=*)/g, `$1${REDACTED_CREDENTIAL}`);
 }
 
 function usage() {
@@ -200,11 +202,11 @@ export function errorMessageForExchangeFailure(status, body) {
 
 export function buildClientConfiguration(exchangeResponse) {
   const result = exchangeResponse.response || exchangeResponse;
-  const bearer = result?.auth?.access_token;
+  const authHeader = authorizationHeaderForExchangeResult(result);
   const mcpUrl = result?.mcp_url;
   const agentId = result?.agent_id;
-  if (!bearer || !mcpUrl) {
-    throw new Error("Kyberis exchange response did not include MCP URL and bearer token.");
+  if (!authHeader || !mcpUrl) {
+    throw new Error("Kyberis exchange response did not include MCP URL and runtime credentials.");
   }
   const jsonConfig = {
     mcpServers: {
@@ -212,7 +214,7 @@ export function buildClientConfiguration(exchangeResponse) {
         type: "http",
         url: mcpUrl,
         headers: {
-          Authorization: `Bearer ${bearer}`,
+          Authorization: authHeader,
         },
       },
     },
@@ -221,19 +223,33 @@ export function buildClientConfiguration(exchangeResponse) {
     agent_id: agentId,
     mcp_url: mcpUrl,
     api_key_id: result.api_key_id,
-    expires_in: result.auth.expires_in,
-    bearer_token: bearer,
+    expires_in: result.auth?.expires_in,
+    authorization_header: authHeader,
+    bearer_token: result.auth?.access_token,
     generic: jsonConfig,
     cursor: jsonConfig,
     windsurf: jsonConfig,
     claude: {
-      command: `claude mcp add --scope local --transport http kyberis ${shellQuote(mcpUrl)} --header ${shellQuote(`Authorization: Bearer ${bearer}`)}`,
+      command: `claude mcp add --scope local --transport http kyberis ${shellQuote(mcpUrl)} --header ${shellQuote(`Authorization: ${authHeader}`)}`,
       config: jsonConfig,
     },
     codex: {
-      toml: `[mcp_servers.kyberis]\nurl = ${tomlString(mcpUrl)}\nheaders = { Authorization = ${tomlString(`Bearer ${bearer}`)} }\n`,
+      toml: `[mcp_servers.kyberis]\nurl = ${tomlString(mcpUrl)}\nhttp_headers = { Authorization = ${tomlString(authHeader)} }\n`,
     },
   };
+}
+
+function authorizationHeaderForExchangeResult(result) {
+  const apiKeyId = String(result?.api_key_id || "").trim();
+  const apiKeySecret = String(result?.api_key_secret || "").trim();
+  if (apiKeyId && apiKeySecret) {
+    return `ApiKey ${apiKeyId}:${apiKeySecret}`;
+  }
+  const bearer = String(result?.auth?.access_token || "").trim();
+  if (bearer) {
+    return `Bearer ${bearer}`;
+  }
+  return "";
 }
 
 function shellQuote(value) {
@@ -339,7 +355,7 @@ export function installClaudeConfiguration(config, options = {}) {
     }
     throw new Error(`Failed to run ${command}: ${removeResult.error.message}. Re-run with --dry-run and run the printed command manually.`);
   }
-  const args = ["mcp", "add", "--scope", "local", "--transport", "http", "kyberis", config.mcp_url, "--header", `Authorization: Bearer ${config.bearer_token}`];
+  const args = ["mcp", "add", "--scope", "local", "--transport", "http", "kyberis", config.mcp_url, "--header", `Authorization: ${config.authorization_header}`];
   const result = run(command, args, runOptions);
   if (result.error) {
     if (isCommandNotFound(result.error)) {

@@ -26,6 +26,7 @@ function testConfig() {
       mcp_url: "https://mcp.example.com/mcp",
       agent_id: "kag_abcdefghijklmnop",
       api_key_id: "api-key-1",
+      api_key_secret: "api-secret-1",
       auth: {
         access_token: "bearer-token",
         expires_in: 1209600,
@@ -69,6 +70,7 @@ test("exchangeConnectToken posts normalized payload", async () => {
       agent_id: "kag_testagent_1234567890",
       agent_type: "claude",
       api_key_id: "api-key-1",
+      api_key_secret: "api-secret-1",
       connection_key_type: "agent_id",
       connection_key: "kag_testagent_1234567890",
       oidc_fallback_bound: false,
@@ -117,6 +119,7 @@ test("buildClientConfiguration emits client snippets", () => {
       mcp_url: "https://mcp.example.com/mcp",
       agent_id: "kag_abcdefghijklmnop",
       api_key_id: "api-key-1",
+      api_key_secret: "api-secret-1",
       auth: {
         access_token: "bearer-token",
         expires_in: 1209600,
@@ -124,10 +127,34 @@ test("buildClientConfiguration emits client snippets", () => {
     },
   });
   assert.equal(config.generic.mcpServers.kyberis.url, "https://mcp.example.com/mcp");
-  assert.equal(config.generic.mcpServers.kyberis.headers.Authorization, "Bearer bearer-token");
+  assert.equal(config.generic.mcpServers.kyberis.headers.Authorization, "ApiKey api-key-1:api-secret-1");
+  assert.equal(config.cursor.mcpServers.kyberis.headers.Authorization, "ApiKey api-key-1:api-secret-1");
+  assert.equal(config.windsurf.mcpServers.kyberis.headers.Authorization, "ApiKey api-key-1:api-secret-1");
   assert.equal(config.windsurf.mcpServers.kyberis.url, "https://mcp.example.com/mcp");
   assert.match(config.claude.command, /claude mcp add/);
+  assert.match(config.claude.command, /Authorization: ApiKey api-key-1:api-secret-1/);
   assert.match(config.codex.toml, /mcp_servers\.kyberis/);
+  assert.match(config.codex.toml, /http_headers = \{ Authorization = "ApiKey api-key-1:api-secret-1" \}/);
+});
+
+test("buildClientConfiguration falls back to bearer for older exchange responses", () => {
+  const config = buildClientConfiguration({
+    response: {
+      mcp_url: "https://mcp.example.com/mcp",
+      agent_id: "kag_abcdefghijklmnop",
+      api_key_id: "api-key-1",
+      auth: {
+        access_token: "bearer-token",
+        expires_in: 1209600,
+      },
+    },
+  });
+
+  assert.equal(config.generic.mcpServers.kyberis.headers.Authorization, "Bearer bearer-token");
+  assert.equal(config.cursor.mcpServers.kyberis.headers.Authorization, "Bearer bearer-token");
+  assert.equal(config.windsurf.mcpServers.kyberis.headers.Authorization, "Bearer bearer-token");
+  assert.match(config.claude.command, /Authorization: Bearer bearer-token/);
+  assert.match(config.codex.toml, /http_headers = \{ Authorization = "Bearer bearer-token" \}/);
 });
 
 test("formatSuccess emits Windsurf MCP config guidance", () => {
@@ -136,6 +163,7 @@ test("formatSuccess emits Windsurf MCP config guidance", () => {
       mcp_url: "https://mcp.example.com/mcp",
       agent_id: "kag_abcdefghijklmnop",
       api_key_id: "api-key-1",
+      api_key_secret: "api-secret-1",
       auth: {
         access_token: "bearer-token",
         expires_in: 1209600,
@@ -161,7 +189,7 @@ test("installClientConfiguration merges Windsurf MCP config", () => {
   assert.equal(saved.other, true);
   assert.deepEqual(saved.mcpServers.existing, { command: "node" });
   assert.equal(saved.mcpServers.kyberis.url, "https://mcp.example.com/mcp");
-  assert.equal(saved.mcpServers.kyberis.headers.Authorization, "Bearer bearer-token");
+  assert.equal(saved.mcpServers.kyberis.headers.Authorization, "ApiKey api-key-1:api-secret-1");
 });
 
 test("installJsonMcpConfig replaces existing Kyberis config", () => {
@@ -173,7 +201,7 @@ test("installJsonMcpConfig replaces existing Kyberis config", () => {
       kyberis: {
         type: "http",
         url: "https://old.example.com/mcp",
-        headers: { Authorization: "Bearer old-token" },
+        headers: { Authorization: "ApiKey old-key:old-secret" },
       },
     },
     other: true,
@@ -186,7 +214,7 @@ test("installJsonMcpConfig replaces existing Kyberis config", () => {
   assert.deepEqual(saved.mcpServers.existing, { command: "node" });
   assert.equal(Object.keys(saved.mcpServers).filter((name) => name === "kyberis").length, 1);
   assert.equal(saved.mcpServers.kyberis.url, "https://mcp.example.com/mcp");
-  assert.equal(saved.mcpServers.kyberis.headers.Authorization, "Bearer bearer-token");
+  assert.equal(saved.mcpServers.kyberis.headers.Authorization, "ApiKey api-key-1:api-secret-1");
 });
 
 test("upsertCodexMcpBlock replaces existing Kyberis block", () => {
@@ -200,11 +228,11 @@ test("upsertCodexMcpBlock replaces existing Kyberis block", () => {
 });
 
 test("upsertCodexMcpBlock replaces spaced CRLF Kyberis block", () => {
-  const existing = "[project]\r\nname = \"demo\"\r\n\r\n  [mcp_servers.kyberis]  \r\nurl = \"https://mcp.example.com/mcp\"\r\nheaders = { Authorization = \"Bearer bearer-token\" }\r\n\r\n[mcp_servers.other]\r\nurl = \"other\"\r\n";
+  const existing = "[project]\r\nname = \"demo\"\r\n\r\n  [mcp_servers.kyberis]  \r\nurl = \"https://mcp.example.com/mcp\"\r\nhttp_headers = { Authorization = \"ApiKey old-key:old-secret\" }\r\n\r\n[mcp_servers.other]\r\nurl = \"other\"\r\n";
   const updated = upsertCodexMcpBlock(existing, testConfig().codex.toml);
 
   assert.equal((updated.match(/\[mcp_servers\.kyberis\]/g) || []).length, 1);
-  assert.equal((updated.match(/headers =/g) || []).length, 1);
+  assert.equal((updated.match(/http_headers =/g) || []).length, 1);
   assert.match(updated, /url = "https:\/\/mcp.example.com\/mcp"/);
   assert.match(updated, /\[mcp_servers.other\]/);
 });
@@ -221,7 +249,7 @@ test("installClientConfiguration invokes Claude CLI idempotently", () => {
   assert.equal(calls[0].command, "claude");
   assert.deepEqual(calls[0].args, ["mcp", "remove", "--scope", "local", "kyberis"]);
   assert.deepEqual(calls[1].args.slice(0, 7), ["mcp", "add", "--scope", "local", "--transport", "http", "kyberis"]);
-  assert.ok(calls[1].args.includes("Authorization: Bearer bearer-token"));
+  assert.ok(calls[1].args.includes("Authorization: ApiKey api-key-1:api-secret-1"));
   assert.equal(result.type, "command");
 });
 
@@ -242,17 +270,17 @@ test("installClientConfiguration explains when Claude Code CLI is missing", () =
   );
 });
 
-test("installClientConfiguration redacts bearer tokens from Claude CLI failures", () => {
+test("installClientConfiguration redacts credentials from Claude CLI failures", () => {
   assert.throws(
     () => installClientConfiguration("claude", testConfig(), {
       spawnSync: () => ({
         status: 1,
-        stderr: "failed command included --header 'Authorization: Bearer bearer-token'",
+        stderr: "failed command included --header 'Authorization: ApiKey api-key-1:api-secret-1'",
       }),
     }),
     (error) => {
-      assert.match(error.message, /Authorization: Bearer \[redacted\]/);
-      assert.doesNotMatch(error.message, /bearer-token/);
+      assert.match(error.message, /Authorization: ApiKey \[redacted\]/);
+      assert.doesNotMatch(error.message, /api-secret-1/);
       return true;
     },
   );
@@ -264,16 +292,16 @@ test("formatInstallSuccess reports updated config file", () => {
   assert.match(output, /Updated \/tmp\/mcp_config\.json/);
 });
 
-test("formatInstallSuccess redacts bearer tokens from command output", () => {
+test("formatInstallSuccess redacts credentials from command output", () => {
   const output = formatInstallSuccess("claude", testConfig(), { type: "command", command: testConfig().claude.command });
 
   assert.match(output, /Configured claude with:/);
-  assert.match(output, /Authorization: Bearer \[redacted\]/);
-  assert.doesNotMatch(output, /bearer-token/);
+  assert.match(output, /Authorization: ApiKey \[redacted\]/);
+  assert.doesNotMatch(output, /api-secret-1/);
 });
 
-test("redactCredentialText redacts bearer tokens in arbitrary output", () => {
-  const output = redactCredentialText("Authorization: Bearer bearer-token\nBearer another-token");
+test("redactCredentialText redacts API keys and bearer tokens in arbitrary output", () => {
+  const output = redactCredentialText("Authorization: ApiKey api-key-1:api-secret-1\nApiKey key:secret\nAuthorization: Bearer bearer-token\nBearer another-token");
 
-  assert.equal(output, "Authorization: Bearer [redacted]\nBearer [redacted]");
+  assert.equal(output, "Authorization: ApiKey [redacted]\nApiKey [redacted]\nAuthorization: Bearer [redacted]\nBearer [redacted]");
 });
