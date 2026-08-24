@@ -203,6 +203,7 @@ export function errorMessageForExchangeFailure(status, body) {
 export function buildClientConfiguration(exchangeResponse) {
   const result = exchangeResponse.response || exchangeResponse;
   const authHeader = authorizationHeaderForExchangeResult(result);
+  const apiKeySecret = String(result?.api_key_secret || "").trim();
   const mcpUrl = result?.mcp_url;
   const agentId = result?.agent_id;
   if (!authHeader || !mcpUrl) {
@@ -223,6 +224,7 @@ export function buildClientConfiguration(exchangeResponse) {
     agent_id: agentId,
     mcp_url: mcpUrl,
     api_key_id: result.api_key_id,
+    api_key_secret_retrievable: Boolean(apiKeySecret),
     expires_in: result.auth?.expires_in,
     authorization_header: authHeader,
     bearer_token: result.auth?.access_token,
@@ -237,6 +239,21 @@ export function buildClientConfiguration(exchangeResponse) {
       toml: `[mcp_servers.kyberis]\nurl = ${tomlString(mcpUrl)}\nhttp_headers = { Authorization = ${tomlString(authHeader)} }\n`,
     },
   };
+}
+
+function apiKeyNote(config) {
+  if (config.api_key_secret_retrievable) {
+    return [
+      `API Key ID: ${config.api_key_id}`,
+      "The API key secret was returned during setup and installed in the MCP client configuration.",
+      "Store that secret securely; Kyberis cannot show it again later.",
+    ].join("\n");
+  }
+  return [
+    `API Key ID: ${config.api_key_id}`,
+    "This API key is bound to the MCP connection. Its secret was not returned and cannot be retrieved.",
+    "Use the installed MCP credentials for this agent. To call the REST API directly, create a separate API key in the Kyberis dashboard.",
+  ].join("\n");
 }
 
 function authorizationHeaderForExchangeResult(result) {
@@ -262,18 +279,18 @@ function tomlString(value) {
 
 export function formatSuccess(client, config) {
   if (client === "claude") {
-    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\nAPI Key: ${config.api_key_id}\n\nRun this Claude command:\n${config.claude.command}\n`;
+    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\n${apiKeyNote(config)}\n\nRun this Claude command:\n${config.claude.command}\n`;
   }
   if (client === "codex") {
-    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\nAPI Key: ${config.api_key_id}\n\nAdd this to your Codex MCP config:\n${config.codex.toml}`;
+    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\n${apiKeyNote(config)}\n\nAdd this to your Codex MCP config:\n${config.codex.toml}`;
   }
   if (client === "cursor") {
-    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\nAPI Key: ${config.api_key_id}\n\nAdd this to your Cursor MCP config at ~/.cursor/mcp.json:\n${JSON.stringify(config.cursor, null, 2)}\n`;
+    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\n${apiKeyNote(config)}\n\nAdd this to your Cursor MCP config at ~/.cursor/mcp.json:\n${JSON.stringify(config.cursor, null, 2)}\n`;
   }
   if (client === "windsurf") {
-    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\nAPI Key: ${config.api_key_id}\n\nAdd this to your Windsurf Cascade MCP config at ~/.codeium/windsurf/mcp_config.json:\n${JSON.stringify(config.windsurf, null, 2)}\n`;
+    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\n${apiKeyNote(config)}\n\nAdd this to your Windsurf Cascade MCP config at ~/.codeium/windsurf/mcp_config.json:\n${JSON.stringify(config.windsurf, null, 2)}\n`;
   }
-  return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\nAPI Key: ${config.api_key_id}\n\nGeneric MCP JSON:\n${JSON.stringify(config.generic, null, 2)}\n`;
+  return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\n${apiKeyNote(config)}\n\nGeneric MCP JSON:\n${JSON.stringify(config.generic, null, 2)}\n`;
 }
 
 export function defaultConfigPath(client, options = {}) {
@@ -371,7 +388,7 @@ export function installClaudeConfiguration(config, options = {}) {
 }
 
 export function formatInstallSuccess(client, config, installResult) {
-  const base = `Kyberis MCP connection installed.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\nAPI Key: ${config.api_key_id}`;
+  const base = `Kyberis MCP connection installed.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\n${apiKeyNote(config)}`;
   if (installResult.type === "file") {
     return `${base}\n\nUpdated ${installResult.path}\nRestart or refresh your MCP client if it does not pick up the new server immediately.\n`;
   }
