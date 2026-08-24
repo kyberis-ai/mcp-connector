@@ -11,6 +11,12 @@ const CLIENT_RE = /^[A-Za-z0-9._-]{1,64}$/;
 const SUPPORTED_CLIENTS = new Set(["claude", "codex", "cursor", "windsurf", "generic"]);
 const CLAUDE_CODE_INSTALL_URL = "https://code.claude.com/docs/en/quickstart";
 const REDACTED_CREDENTIAL = "[redacted]";
+const SETUP_EXCHANGE_EFFECTS = {
+  exchanges_connect_token: true,
+  spends_connect_token: true,
+  creates_server_side_credentials: true,
+  updates_local_client_config: false,
+};
 
 function isCommandNotFound(error) {
   return Boolean(error && error.code === "ENOENT");
@@ -48,8 +54,10 @@ Options:
   --api-url <url>       Kyberis API base URL. Defaults to ${DEFAULT_API_URL}
   --agent-label <text>  Display label for this agent connection
   --agent-id <id>       Existing agent id, mainly for tests or repair flows
-  -n, --dry-run        Print configuration guidance without changing client config
-  --json                Print machine-readable JSON only without changing client config
+  --print-config        Print manual install guidance without changing client config
+  --manual              Alias for --print-config
+  -n, --dry-run         Alias for --print-config; still exchanges and spends the connect token
+  --json                Print machine-readable JSON only; still exchanges and spends the connect token
   -h, --help            Show this help
 `;
 }
@@ -84,6 +92,8 @@ export function parseArgs(argv) {
       out.agentLabel = String(args.shift() || "").trim();
     } else if (key === "--agent-id") {
       out.agentId = String(args.shift() || "").trim();
+    } else if (key === "--print-config" || key === "--manual") {
+      out.dryRun = true;
     } else if (key === "--dry-run" || key === "-n") {
       out.dryRun = true;
     } else if (key === "--json") {
@@ -281,19 +291,28 @@ function tomlString(value) {
 }
 
 export function formatSuccess(client, config) {
+  const notice = setupExchangeNotice();
   if (client === "claude") {
-    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\n${apiKeyNote(config)}\n\nRun this Claude command:\n${config.claude.command}\n`;
+    return `${notice}\n\nKyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\n${apiKeyNote(config)}\n\nRun this Claude command:\n${config.claude.command}\n`;
   }
   if (client === "codex") {
-    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\n${apiKeyNote(config)}\n\nAdd this to your Codex MCP config:\n${config.codex.toml}`;
+    return `${notice}\n\nKyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\n${apiKeyNote(config)}\n\nAdd this to your Codex MCP config:\n${config.codex.toml}`;
   }
   if (client === "cursor") {
-    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\n${apiKeyNote(config)}\n\nAdd this to your Cursor MCP config at ~/.cursor/mcp.json:\n${JSON.stringify(config.cursor, null, 2)}\n`;
+    return `${notice}\n\nKyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\n${apiKeyNote(config)}\n\nAdd this to your Cursor MCP config at ~/.cursor/mcp.json:\n${JSON.stringify(config.cursor, null, 2)}\n`;
   }
   if (client === "windsurf") {
-    return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\n${apiKeyNote(config)}\n\nAdd this to your Windsurf Cascade MCP config at ~/.codeium/windsurf/mcp_config.json:\n${JSON.stringify(config.windsurf, null, 2)}\n`;
+    return `${notice}\n\nKyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\n${apiKeyNote(config)}\n\nAdd this to your Windsurf Cascade MCP config at ~/.codeium/windsurf/mcp_config.json:\n${JSON.stringify(config.windsurf, null, 2)}\n`;
   }
-  return `Kyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\n${apiKeyNote(config)}\n\nGeneric MCP JSON:\n${JSON.stringify(config.generic, null, 2)}\n`;
+  return `${notice}\n\nKyberis MCP connection ready.\n\nAgent ID: ${config.agent_id}\nMCP URL: ${config.mcp_url}\n${apiKeyNote(config)}\n\nGeneric MCP JSON:\n${JSON.stringify(config.generic, null, 2)}\n`;
+}
+
+function setupExchangeNotice() {
+  return [
+    "Manual install mode:",
+    "This command exchanged and spent the one-time connect token, registered the MCP client, and created server-side credentials.",
+    "It did not change local client configuration; copy the printed config into your MCP client.",
+  ].join("\n");
 }
 
 export function defaultConfigPath(client, options = {}) {
@@ -307,7 +326,7 @@ export function defaultConfigPath(client, options = {}) {
   if (client === "windsurf") {
     return path.join(homeDir, ".codeium", "windsurf", "mcp_config.json");
   }
-  throw new Error(`No default config path for ${client}. Re-run with --dry-run and copy the generated config into your client.`);
+  throw new Error(`No default config path for ${client}. Re-run with --print-config and copy the generated config into your client.`);
 }
 
 export function installClientConfiguration(client, config, options = {}) {
@@ -326,7 +345,7 @@ export function installClientConfiguration(client, config, options = {}) {
     installJsonMcpConfig(filePath, config[client]);
     return { type: "file", path: filePath };
   }
-  throw new Error("Generic MCP clients do not have a default config location. Re-run with --dry-run and copy the generated JSON into your client.");
+  throw new Error("Generic MCP clients do not have a default config location. Re-run with --print-config and copy the generated JSON into your client.");
 }
 
 export function installJsonMcpConfig(filePath, config) {
@@ -373,7 +392,7 @@ export function installClaudeConfiguration(config, options = {}) {
     if (isCommandNotFound(removeResult.error)) {
       throw new Error(missingAgentCommandMessage(command));
     }
-    throw new Error(`Failed to run ${command}: ${removeResult.error.message}. Re-run with --dry-run and run the printed command manually.`);
+    throw new Error(`Failed to run ${command}: ${removeResult.error.message}. Re-run with --print-config and run the printed command manually.`);
   }
   const args = ["mcp", "add", "--scope", "local", "--transport", "http", "kyberis", config.mcp_url, "--header", `Authorization: ${config.authorization_header}`];
   const result = run(command, args, runOptions);
@@ -381,11 +400,11 @@ export function installClaudeConfiguration(config, options = {}) {
     if (isCommandNotFound(result.error)) {
       throw new Error(missingAgentCommandMessage(command));
     }
-    throw new Error(`Failed to run ${command}: ${result.error.message}. Re-run with --dry-run and run the printed command manually.`);
+    throw new Error(`Failed to run ${command}: ${result.error.message}. Re-run with --print-config and run the printed command manually.`);
   }
   if (result.status !== 0) {
     const detail = redactCredentialText(String(result.stderr || result.stdout || "").trim());
-    throw new Error(`Claude MCP configuration failed${detail ? `: ${detail}` : ""}. Re-run with --dry-run and run the printed command manually.`);
+    throw new Error(`Claude MCP configuration failed${detail ? `: ${detail}` : ""}. Re-run with --print-config and run the printed command manually.`);
   }
   return { type: "command", command: config.claude.command };
 }
@@ -407,7 +426,11 @@ export async function main(argv) {
   const exchanged = await exchangeConnectToken(args);
   const config = buildClientConfiguration(exchanged);
   if (args.json) {
-    console.log(JSON.stringify({ client: args.client, ...config }, null, 2));
+    console.log(JSON.stringify({
+      client: args.client,
+      setup_exchange_effects: SETUP_EXCHANGE_EFFECTS,
+      ...config,
+    }, null, 2));
     return;
   }
   if (args.dryRun) {

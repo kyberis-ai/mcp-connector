@@ -16,11 +16,18 @@ installs a legacy bearer fallback for the MCP client and prints the API key ID,
 not an API key secret. The secret is not retrievable later, so that key cannot
 be copied into direct REST API calls.
 
-Use `--dry-run` or `-n` to print configuration guidance without changing local
-client config. Use `--json` to print machine-readable connection details without
-changing local client config; `auth_mode: "api_key"` is the normal direct API-key
-path, and `auth_mode: "bearer_fallback"` means the server returned only a legacy
-bearer credential.
+Use `--print-config` or `--manual` to print manual installation guidance without
+changing local client config. `--dry-run` and `-n` remain aliases for
+compatibility. These modes still exchange and spend the one-time connect token,
+register the MCP client, and create server-side credentials; they only skip
+local client configuration changes.
+
+Use `--json` to print machine-readable connection details without changing local
+client config. It also exchanges and spends the connect token. The JSON includes
+`setup_exchange_effects` so automation can tell that server-side setup occurred.
+`auth_mode: "api_key"` is the normal direct API-key path, and
+`auth_mode: "bearer_fallback"` means the server returned only a legacy bearer
+credential.
 
 The connect token is only a one-time setup credential. After exchange, Kyberis
 creates an MCP connection and binds it to a durable API key. That API key's
@@ -39,7 +46,7 @@ Default configuration targets:
 - Codex: updates `~/.codex/config.toml` with a Kyberis HTTP MCP server and `Authorization` header
 - Cursor: updates `~/.cursor/mcp.json` with a Kyberis HTTP MCP server and `Authorization` header
 - Windsurf: updates `~/.codeium/windsurf/mcp_config.json` with a Kyberis HTTP MCP server and `Authorization` header
-- Generic: no default install target; use `--dry-run` and copy the JSON into your client
+- Generic: no default install target; use `--print-config` and copy the JSON into your client
 
 Claude Code scopes:
 

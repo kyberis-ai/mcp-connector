@@ -62,6 +62,14 @@ test("parseArgs accepts dry-run shorthand", () => {
   assert.equal(args.dryRun, true);
 });
 
+test("parseArgs accepts manual print config aliases", () => {
+  const printConfig = parseArgs(["connect", "windsurf", "--token", TOKEN, "--print-config"]);
+  const manual = parseArgs(["connect", "windsurf", "--token", TOKEN, "--manual"]);
+
+  assert.equal(printConfig.dryRun, true);
+  assert.equal(manual.dryRun, true);
+});
+
 test("parseArgs rejects unsupported client", () => {
   assert.throws(
     () => parseArgs(["connect", "unknown", "--token", TOKEN]),
@@ -169,6 +177,9 @@ test("formatSuccess explains bearer fallback API key secrets are not retrievable
   const output = formatSuccess("generic", bearerOnlyConfig());
 
   assert.match(output, /MCP Auth: Bearer fallback/);
+  assert.match(output, /Manual install mode/);
+  assert.match(output, /exchanged and spent the one-time connect token/);
+  assert.match(output, /did not change local client configuration/);
   assert.match(output, /API Key ID: api-key-1/);
   assert.match(output, /did not include its secret/);
   assert.match(output, /To call the REST API directly, create a separate API key/);
@@ -179,6 +190,7 @@ test("formatSuccess explains returned API key secrets cannot be shown later", ()
   const output = formatSuccess("generic", testConfig());
 
   assert.match(output, /MCP Auth: API key/);
+  assert.match(output, /Manual install mode/);
   assert.match(output, /API Key ID: api-key-1/);
   assert.match(output, /Direct API-key auth was returned during setup/);
   assert.match(output, /cannot show it again later/);
