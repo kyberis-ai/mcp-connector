@@ -145,6 +145,7 @@ test("buildClientConfiguration emits client snippets", () => {
   assert.equal(config.cursor.mcpServers.kyberis.headers.Authorization, "ApiKey api-key-1:api-secret-1");
   assert.equal(config.windsurf.mcpServers.kyberis.headers.Authorization, "ApiKey api-key-1:api-secret-1");
   assert.equal(config.windsurf.mcpServers.kyberis.url, "https://mcp.example.com/mcp");
+  assert.equal(config.auth_mode, "api_key");
   assert.equal(config.api_key_secret_retrievable, true);
   assert.match(config.claude.command, /claude mcp add/);
   assert.match(config.claude.command, /Authorization: ApiKey api-key-1:api-secret-1/);
@@ -158,16 +159,18 @@ test("buildClientConfiguration falls back to bearer for older exchange responses
   assert.equal(config.generic.mcpServers.kyberis.headers.Authorization, "Bearer bearer-token");
   assert.equal(config.cursor.mcpServers.kyberis.headers.Authorization, "Bearer bearer-token");
   assert.equal(config.windsurf.mcpServers.kyberis.headers.Authorization, "Bearer bearer-token");
+  assert.equal(config.auth_mode, "bearer_fallback");
   assert.equal(config.api_key_secret_retrievable, false);
   assert.match(config.claude.command, /Authorization: Bearer bearer-token/);
   assert.match(config.codex.toml, /http_headers = \{ Authorization = "Bearer bearer-token" \}/);
 });
 
-test("formatSuccess explains bearer-only API key secrets are not retrievable", () => {
+test("formatSuccess explains bearer fallback API key secrets are not retrievable", () => {
   const output = formatSuccess("generic", bearerOnlyConfig());
 
+  assert.match(output, /MCP Auth: Bearer fallback/);
   assert.match(output, /API Key ID: api-key-1/);
-  assert.match(output, /secret was not returned and cannot be retrieved/);
+  assert.match(output, /did not include its secret/);
   assert.match(output, /To call the REST API directly, create a separate API key/);
   assert.doesNotMatch(output, /API Key: api-key-1/);
 });
@@ -175,8 +178,9 @@ test("formatSuccess explains bearer-only API key secrets are not retrievable", (
 test("formatSuccess explains returned API key secrets cannot be shown later", () => {
   const output = formatSuccess("generic", testConfig());
 
+  assert.match(output, /MCP Auth: API key/);
   assert.match(output, /API Key ID: api-key-1/);
-  assert.match(output, /secret was returned during setup/);
+  assert.match(output, /Direct API-key auth was returned during setup/);
   assert.match(output, /cannot show it again later/);
 });
 

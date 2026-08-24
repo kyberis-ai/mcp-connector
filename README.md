@@ -8,15 +8,19 @@ npx -y @kyberis-ai/mcp connect windsurf --token kct_abc123
 
 The command exchanges the token for an MCP connection credential and configures
 the selected MCP client by default. Kyberis creates or selects an API key for the
-MCP connection, but the setup response may only return a short-lived bearer
-token for the MCP client. In that case the CLI prints the API key ID, not an API
-key secret. The secret is not retrievable later, so that key cannot be copied
-into direct REST API calls as `Authorization: ApiKey <id>:<secret>`.
+MCP connection. When setup returns that key's secret, the CLI installs direct
+API-key auth as `Authorization: ApiKey <id>:<secret>`.
+
+Older exchange responses may not include an API key secret. In that case the CLI
+installs a legacy bearer fallback for the MCP client and prints the API key ID,
+not an API key secret. The secret is not retrievable later, so that key cannot
+be copied into direct REST API calls.
 
 Use `--dry-run` or `-n` to print configuration guidance without changing local
 client config. Use `--json` to print machine-readable connection details without
-changing local client config; check `api_key_secret_retrievable` before treating
-the API key as a direct REST credential.
+changing local client config; `auth_mode: "api_key"` is the normal direct API-key
+path, and `auth_mode: "bearer_fallback"` means the server returned only a legacy
+bearer credential.
 
 The connect token is only a one-time setup credential. After exchange, Kyberis
 creates an MCP connection and binds it to a durable API key. That API key's
