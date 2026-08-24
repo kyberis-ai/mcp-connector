@@ -7,12 +7,16 @@ npx -y @kyberis-ai/mcp connect windsurf --token kct_abc123
 ```
 
 The command exchanges the token for an MCP connection credential and configures
-the selected MCP client by default. Newer Kyberis APIs return a durable API key
-credential and the connector installs `Authorization: ApiKey <id>:<secret>`.
-During rollout, older exchange responses that only include a bearer token still
-install `Authorization: Bearer <token>`. Use `--dry-run` or `-n` to print the
-configuration guidance without changing local client config. Use `--json` to
-print machine-readable connection details without changing local client config.
+the selected MCP client by default. Kyberis creates or selects an API key for the
+MCP connection, but the setup response may only return a short-lived bearer
+token for the MCP client. In that case the CLI prints the API key ID, not an API
+key secret. The secret is not retrievable later, so that key cannot be copied
+into direct REST API calls as `Authorization: ApiKey <id>:<secret>`.
+
+Use `--dry-run` or `-n` to print configuration guidance without changing local
+client config. Use `--json` to print machine-readable connection details without
+changing local client config; check `api_key_secret_retrievable` before treating
+the API key as a direct REST credential.
 
 The connect token is only a one-time setup credential. After exchange, Kyberis
 creates an MCP connection and binds it to a durable API key. That API key's
@@ -20,6 +24,10 @@ scopes control which MCP tools can call Kyberis. If a tool returns
 `insufficient_scope`, check `missing_scopes` in the error response, update or
 create an API key with those scopes, then rebind or reconnect the MCP client so
 it receives fresh runtime credentials.
+
+For direct REST API access outside MCP, create a separate API key in the Kyberis
+dashboard and save its secret when it is shown. Editing an API key later does
+not show the secret again.
 
 Default configuration targets:
 
