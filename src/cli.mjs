@@ -224,6 +224,7 @@ export function buildClientConfiguration(exchangeResponse) {
     agent_id: agentId,
     mcp_url: mcpUrl,
     api_key_id: result.api_key_id,
+    auth_mode: apiKeySecret ? "api_key" : "bearer_fallback",
     api_key_secret_retrievable: Boolean(apiKeySecret),
     expires_in: result.auth?.expires_in,
     authorization_header: authHeader,
@@ -244,15 +245,17 @@ export function buildClientConfiguration(exchangeResponse) {
 function apiKeyNote(config) {
   if (config.api_key_secret_retrievable) {
     return [
+      "MCP Auth: API key",
       `API Key ID: ${config.api_key_id}`,
-      "The API key secret was returned during setup and installed in the MCP client configuration.",
+      "Direct API-key auth was returned during setup and installed in the MCP client configuration.",
       "Store that secret securely; Kyberis cannot show it again later.",
     ].join("\n");
   }
   return [
+    "MCP Auth: Bearer fallback",
     `API Key ID: ${config.api_key_id}`,
-    "This API key is bound to the MCP connection. Its secret was not returned and cannot be retrieved.",
-    "Use the installed MCP credentials for this agent. To call the REST API directly, create a separate API key in the Kyberis dashboard.",
+    "This API key is bound to the MCP connection, but the exchange response did not include its secret.",
+    "The connector installed a legacy bearer fallback credential for this agent. To call the REST API directly, create a separate API key in the Kyberis dashboard.",
   ].join("\n");
 }
 
